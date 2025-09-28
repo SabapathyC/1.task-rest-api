@@ -1,0 +1,71 @@
+package com.example.demo.service;
+
+import com.example.demo.model.Task;
+import com.example.demo.model.TaskExecution;
+import com.example.demo.repository.TaskRepository;
+import org.springframework.stereotype.Service;
+
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.util.Date;
+import java.util.List;
+import java.util.Optional;
+
+@Service
+public class TaskService {
+    
+    private final TaskRepository repository;
+
+    public TaskService(TaskRepository repository) {
+        this.repository = repository;
+    }
+
+    public List<Task> getAllTasks() {
+        return repository.findAll();
+    }
+
+    public Optional<Task> getTaskById(String id) {
+        return repository.findById(id);
+    }
+
+    public Task saveTask(Task task) {
+        // Validate command (basic safety check)
+        if(task.getCommand().contains("rm") || task.getCommand().contains("sudo")) {
+            throw new IllegalArgumentException("Unsafe command detected!");
+        }
+        return repository.save(task);
+    }
+
+    public void deleteTask(String id) {
+        repository.deleteById(id);
+    }
+
+    public List<Task> findTasksByName(String name) {
+        return repository.findByNameContainingIgnoreCase(name);
+    }
+
+    public TaskExecution executeTask(String taskId) throws Exception {
+        Task task = repository.findById(taskId)
+                .orElseThrow(() -> new RuntimeException("Task not found"));
+
+        TaskExecution execution = new TaskExecution();
+        execution.setStartTime(new Date());
+
+        Process process = Runtime.getRuntime().exec(task.getCommand());
+        BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
+        StringBuilder output = new StringBuilder();
+        String line;
+        while ((line = reader.readLine()) != null) {
+            output.append(line).append("\n");
+        }
+
+        process.waitFor();
+        execution.setEndTime(new Date());
+        execution.setOutput(output.toString());
+
+        task.getTaskExecutions().add(execution);
+        repository.save(task);
+
+        return execution;
+    }
+}
